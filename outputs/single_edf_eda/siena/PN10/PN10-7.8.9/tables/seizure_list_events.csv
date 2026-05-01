@@ -1,0 +1,4 @@
+file,start_sec,end_sec,duration_sec,in_range
+PN10-7.8.9.edf,38748.0,38796.0,48.0,False
+PN10-7.8.9.edf,5459.0,5477.0,18.0,True
+PN10-7.8.9.edf,12923.0,12938.0,15.0,True
