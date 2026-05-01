@@ -1,0 +1,46 @@
+channel,channel_type,unit_raw,unit_norm,sfreq,phys_min,phys_max,dig_min,dig_max,empty_name,duplicated_name,phys_range_invalid,dig_range_invalid
+EEG Fp1,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG F3,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG C3,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG P3,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG O1,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG F7,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG T3,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG T5,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG Fc1,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG Fc5,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG Cp1,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG Cp5,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG F9,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG Fz,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG Cz,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG Pz,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG F4,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG C4,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG P4,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG O2,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG F8,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG T4,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG T6,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG Fc2,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG Fc6,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG Cp2,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG Cp6,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG F10,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EKG EKG,ecg,uV,uV,512.0,-499712.0,499696.8,-32768.0,32767.0,False,False,False,False
+SPO2,spo2,%,%,512.0,-32768.0,32767.0,-32768.0,32767.0,False,False,False,False
+HR,unknown,bpm,bpm,512.0,-32768.0,32767.0,-32768.0,32767.0,False,False,False,False
+1,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+2,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG FP2,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG P9,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+EEG P10,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+B,unknown,uV,uV,512.0,-499712.0,499696.8,-32768.0,32767.0,False,False,False,False
+C,eeg,uV,uV,512.0,-499712.0,499696.8,-32768.0,32767.0,False,False,False,False
+D,unknown,uV,uV,512.0,-499712.0,499696.8,-32768.0,32767.0,False,False,False,False
+PLET,eeg,au,au,512.0,-32768.0,32767.0,-32768.0,32767.0,False,False,False,False
+61,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+62,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+63,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+64,unknown,uV,uV,512.0,-4096.0,4095.875,-32768.0,32767.0,False,False,False,False
+MK,unknown,uV,uV,512.0,-32768.0,32767.0,-32768.0,32767.0,False,False,False,False
