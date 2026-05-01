@@ -1,0 +1,6 @@
+﻿# Dataset and large local artifacts
+data/
+
+# Python caches
+__pycache__/
+*.pyc

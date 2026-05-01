@@ -1,0 +1,2 @@
+sfreq,n_channels,mean_abs_corr,max_corr,min_corr,low_corr_flag
+512.0,37,0.26618229446699254,0.9999844212168373,-0.24242511773521114,False
