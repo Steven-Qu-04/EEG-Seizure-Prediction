@@ -1,0 +1,51 @@
+--- page 1 ---
+loop seizure prediction to showcase its effectiveness. Firstly, two neural network
+--- page 2 ---
+0.57/h false alarm rate in seizure prediction task (Hsieh et al., 2022 ).
+--- page 3 ---
+proposed method are validated with a real-time seizure prediction
+there are a few to tens of channels, and each channel is sampling at the
+--- page 4 ---
+quantization techniques in the context of epileptic seizure prediction
+--- page 5 ---
+predicting disease biomarkers are only effective for a brief window of
+episodes being of short duration, often just seconds or minutes. In the
+case of epilepsy patients, seizures represent merely 0.01% of their
+--- page 8 ---
+proposed model: the American Epilepsy Society Seizure Prediction
+AES-MathWorks-NIH Seizure Prediction Challenge, contains iEEG
+seizures. Most measurements were obtained using 23 fixed electrodes,
+--- page 9 ---
+and the sampling rate for all subjects was 256 Hz. There were variations
+in the data, including the number of seizure events and data length.
+For seizure prediction task, it is essential to consider the Seizure
+Prediction Horizon (SPH) and the Preictal Interval Length (PIL)
+a seizure and the preictal phase, while the PIL quantifies the duration
+of the preictal state. In the case of the two iEEG datasets, we configured
+the training data is segregated into preictal and interictal samples. To
+address the data imbalance between these two sample types, preictal
+samples are extracted with 5-s overlaps, while interictal samples are
+Due to the difference between sampling rate and number of
+--- page 10 ---
+volts. During the seizure prediction task, power consumption
+TABLE 1 Comparison with closed-loop control algorithms for seizure
+--- page 11 ---
+TABLE 2 Comparison with closed-loop control algorithms for seizure prediction.
+Application Seizure prediction Seizure prediction Seizure detection Seizure detection
+--- page 12 ---
+(2016). Crowdsourcing reproducible seizure forecasting in human and canine epilepsy.
+Bruno, E., Viana, P . F ., Sperling, M. R., and Richardson, M. P . (2020). Seizure detection
+power and bidirectional data telemetry for real-time efficient human epileptic seizure
+Daoud, H., and Bayoumi, M. A. (2019). Efficient epileptic seizure prediction based on
+Brinkmann, B., et al.  Convolutional neural networks for epileptic seizure prediction  .
+with adaptable intelligence for seizure prediction. IEEE J. Solid State Circuits  58,
+processor with on-chip active learning for epileptic seizure control. IEEE J. Solid State
+et al. (2018a). Epilepsyecosystem. Org: crowd-sourcing reproducible seizure prediction
+Seizure prediction ready for a new era. Nat. Rev. Neurol. 14, 618 630. doi: 10.1038/
+(2018). Convolutional neural networks for seizure prediction using intracranial and
+Wang, G., Wang, D., Changwang, D., Li, K., Zhang, J., Liu, Z., et al. (2020). Seizure
+refined seizure prediction algorithm based on an enhanced benchmarking. Sci. Rep. 11,
+--- page 13 ---
+Y ang, J., and Sawan, M. (2020). From seizure detection to smart and fully embedded
+seizure prediction engine: a review. IEEE Trans Biomed Circuits Syst 14, 1008 1023. doi:
+convolutional neural network for seizure prediction." In:  2020 IEEE International

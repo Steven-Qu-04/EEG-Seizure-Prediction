@@ -1,0 +1,47 @@
+Yang et al. 10.3389/fnins.2024.1340164
+Frontiers in Neuroscience 09 frontiersin.org
+and the sampling rate for all subjects was 256 Hz. There were variations 
+in the data, including the number of seizure events and data length. 
+For seizure prediction task, it is essential to consider the Seizure 
+Prediction Horizon (SPH) and the Preictal Interval Length (PIL) 
+during the data preprocessing stage (Y ang and Sawan, 2020; Wang 
+et al., 2021 ). The SPH denotes the time interval between the onset of 
+a seizure and the preictal phase, while the PIL quantifies the duration 
+of the preictal state. In the case of the two iEEG datasets, we configured 
+the SPH and PIL to be 5 min and 1 h, respectively. Conversely, for the 
+CHB-MIT EEG dataset, these values were set to 5 and 30 min, 
+respectively. In accordance with the specified SPH and PIL parameters, 
+the training data is segregated into preictal and interictal samples. To 
+address the data imbalance between these two sample types, preictal 
+samples are extracted with 5-s overlaps, while interictal samples are 
+extracted without any overlaps.
+Following the use of the proposed method in Section 2, we can 
+obtain a baseline model and quantize the model to 8-bit quantization 
+or binary models. The CNN model obtained with CHB-MIT dataset 
+is shown in Figure 10 . The architecture comprises five convolutional 
+blocks, each consisting of a convolutional layer followed by a pooling 
+layer. A ReLU activation function is applied after the convolution. 
+The output is generated using a global average pooling layer, followed 
+by a dense layer applying the Softmax function. The dimensions of 
+the convolution and pooling for each layer are also depicted in 
+Figure 10 .
+Due to the difference between sampling rate and number of 
+channels, the network architecture can vary based on different dataset. 
+Throughout the training process, we employ the leave-one-out cross-
+validation method to mitigate the risk of potential overfitting and 
+helps ensure the robustness of our model s performance. Critical 
+metrics, including sensitivity, false alarm rate, model size is presented 
+in Table  1. Our 8-bit quantization model achieved overall better 
+performance when compared with previous reported top-performing 
+models in different datasets. The 8-bit model can outperform other 
+models in both sensitivity and false alarm rate. Although the binary 
+model may not achieve a low false alarm rate comparable to other 
+models, it significantly reduces computational and memory demands.
+4.2 Chip implementation and performance
+Figure  11A  illustrates the prototype system designed for 
+evaluating the proposed processor. The test system consists of several 
+essential components, including an oscilloscope, power supply, a 
+testing printed circuit board (PCB) that links the FPGA to the chip, 
+and a real-time graphical user interface (GUI) on a desktop computer 
+FIGURE 9
+Reconfigurable details of PE, (A) intra-PE connection in BNN configuration (B) intra-PE connection in CNN configuration.

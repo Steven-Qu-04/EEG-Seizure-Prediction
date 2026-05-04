@@ -1,0 +1,49 @@
+Yang et al. 10.3389/fnins.2024.1340164
+Frontiers in Neuroscience 08 frontiersin.org
+to the intra-PE logic. If the computation involves a partial convolution 
+operation, the outcome is forwarded to the next connected 
+PE. However, if it s a complete convolution operation, the final result 
+is achieved by applying the sign activation function and the max 
+pooling module within the intra-PE logic.
+During the CNN mode, multipliers are fetched from the data 
+memory and stored in the registers of the intra-PE logic. These 
+multipliers serve the purpose of encoding the multiplicand using 
+Booth control logic. The encoded Booth products are then directed 
+to the respective CU. Depending on if the output is partial sum or 
+final results, the finial CU will direct the data to the next PE for 
+further accumulation or necessitates the execution of the Rectified 
+Linear Unit (ReLU) activation function and the max pooling 
+operation by the respective modules. The data sent to the data 
+memory needs to be quantized to 8-bits. The quantization process is 
+managed by the quantizer module, and its configuration is 
+determined by the immediate instructions decoded by the 
+top controller.
+4 Experiments and evaluation results
+Evaluations of this study are conducted in terms of model 
+classification accuracy, false alarm rate and chip power consumption. 
+Experimental setup including graphic user interface (GUI), PCB and 
+FPGA test board are designed to facilitate the testing of the proposed 
+algorithm and the chip.
+4.1 Closed-loop control performance 
+evaluation
+This paper employs three datasets to assess the performance of the 
+proposed model: the American Epilepsy Society Seizure Prediction 
+Challenge (AES) intracranial electroencephalogram (iEEG) dataset 
+(Brinkmann et  al., 2016 ), the Melbourne University iEEG dataset 
+(Kuhlmann et al., 2018a ), and the CHB-MIT electroencephalogram 
+(EEG) dataset (Goldberger et al., 2000 ). The AES dataset comprises 
+iEEG recordings collected from five dogs and two human subjects. 
+The dog data was sampled at a rate of 400 Hz, with 16 electrodes used 
+for four dogs and 15 electrodes for one dog (Dog5). The human 
+subjects  iEEG data were sampled at 5,000 Hz, using 15 electrodes for 
+one patient and 24 electrodes for the other patients. The Melbourne 
+University dataset, accessible through the Melbourne-University 
+AES-MathWorks-NIH Seizure Prediction Challenge, contains iEEG 
+signals from three patients. Each patient had 16 electrodes implanted, 
+and all measurements were sampled at a frequency of 400 Hz. The 
+CHB-MIT dataset comprises EEG data from 22 patients, recorded 
+over multiple days, resulting in a total of 637 recordings, including 163 
+seizures. Most measurements were obtained using 23 fixed electrodes, 
+FIGURE 8
+Reconfigure PE to perform different operation, (A) PE configured to perform popcount operation, (B) PE configured to perform booth encoded 
+multiplication.
