@@ -1,0 +1,34 @@
+{
+  "window": "win10s",
+  "version": "v1",
+  "permanent_val_records": [
+    "PN06/PN06-1",
+    "PN14/PN14-4"
+  ],
+  "train_records": [
+    "PN06/PN06-2",
+    "PN06/PN06-4",
+    "PN06/PN06-5",
+    "PN09/PN09-1",
+    "PN09/PN09-2",
+    "PN09/PN09-3",
+    "PN10/PN10-1",
+    "PN10/PN10-10",
+    "PN10/PN10-7.8.9",
+    "PN13/PN13-1",
+    "PN13/PN13-3",
+    "PN14/PN14-2",
+    "PN14/PN14-3"
+  ],
+  "test_records": [
+    "PN06/PN06-3",
+    "PN10/PN10-4.5.6",
+    "PN13/PN13-2",
+    "PN14/PN14-1"
+  ],
+  "counts": {
+    "train_samples": 8298,
+    "val_samples": 1983,
+    "test_samples": 1386
+  }
+}
