@@ -172,14 +172,15 @@ class NASController(nn.Module):
             torch.stack(entropies),
         )
 
-    def compute_loss(self, log_probs, rewards, baseline):
+    def compute_loss(self, log_probs, rewards, baseline, entropies=None):
         """
-        Compute REINFORCE loss with entropy regularization.
+        Compute REINFORCE loss with optional entropy regularization.
 
         Args:
             log_probs (Tensor): shape (B,)
             rewards (Tensor): shape (B,)
             baseline (float or Tensor)
+            entropies (Tensor, optional): shape (B,)
 
         Returns:
             loss (Tensor)
@@ -188,4 +189,7 @@ class NASController(nn.Module):
         advantage = rewards - baseline
         policy_loss = -(log_probs * advantage.detach()).mean()
 
-        return policy_loss
+        if entropies is None:
+            return policy_loss
+
+        return policy_loss - self.entropy_coeff * entropies.mean()
