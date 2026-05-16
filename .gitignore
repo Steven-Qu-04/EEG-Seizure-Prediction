@@ -1,9 +1,24 @@
-﻿# Dataset and large local artifacts
+# Dataset and large local artifacts
 data/
 
 # Python caches
 __pycache__/
 *.pyc
 
-# Local processing logs
+# Local processing outputs
+outputs/nas_cnn_runs/
+outputs/nas_cnn_8bit_runs/
+outputs/nas_cnn_bin_runs/
+outputs/p2p_timeline_*/
+outputs/siena_parallel_logs/
+outputs/single_edf_eda/
+outputs/env_export_*.yml
+outputs/paper_page_*.txt
+outputs/pdf_extract_tmp.txt
 outputs/single_edf_eda/siena/_*.log
+
+# Root-level experiment run directories
+/20??????_??????_win*_*/
+
+# Reference text extracts
+references/*.txt
