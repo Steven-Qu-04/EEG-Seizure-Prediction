@@ -22,3 +22,11 @@ outputs/single_edf_eda/siena/_*.log
 
 # Reference text extracts
 references/*.txt
+
+# ExecuTorch local build/export artifacts
+deploy_executorch/__pycache__/
+deploy_executorch/build*/
+deploy_executorch/wheel_probe/
+deploy_executorch/tools/bin/
+deploy_executorch/dist/*
+!deploy_executorch/dist/.gitkeep
