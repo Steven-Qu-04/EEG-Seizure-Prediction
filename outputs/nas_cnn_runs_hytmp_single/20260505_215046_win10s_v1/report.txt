@@ -1,0 +1,25 @@
+RNN-NAS + CNN Training Report
+
+Reproducibility
+- seed: 42
+- git_commit: 0921418
+- python: 3.10.20
+- torch: 2.5.1
+- cli_args: {'data_root': '/tmp/siena_data', 'window': 'win10s', 'version': 'v1', 'output_root': 'outputs/nas_cnn_runs_hytmp_single', 'seed': 42, 'batch_size': 64, 'num_workers': 0, 'epochs': 1, 'lr': 0.001, 'test_ratio': 0.2, 'nas_rounds': 1, 'nas_samples': 1, 'dry_run': False}
+- start_time: 2026-05-05T21:51:11
+- end_time: 2026-05-05T21:52:19
+
+Dataset Selection
+- window: win10s
+- version: v1
+- split_manifest: outputs/nas_cnn_runs_hytmp_single/20260505_215046_win10s_v1/split_manifest.json
+
+FAR Definition
+- FAR = false_positive_windows / negative_hours
+- negative_hours = (num_true_negative_windows * window_sec) / 3600
+
+NAS Selection (Permanent Validation Only)
+- rank_1: trial=1, sensitivity=0.000000, far=0.000000, f1=0.000000
+
+Final Test Metrics (Held-out Test Split)
+- rank_1 trial=1: sensitivity=0.000000, far=0.000000, f1=0.000000, acc=0.657287
