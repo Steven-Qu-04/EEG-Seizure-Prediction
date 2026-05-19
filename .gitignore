@@ -1,9 +1,18 @@
 # Dataset and large local artifacts
 data/
+deploy_executorch/
 
 # Python caches
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
 
 # Local processing outputs
 outputs/
@@ -30,3 +39,16 @@ token.txt
 
 # Local generated slices
 siena_slices/
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Build helper outputs
+build/
+dist/
+compile_commands.json
