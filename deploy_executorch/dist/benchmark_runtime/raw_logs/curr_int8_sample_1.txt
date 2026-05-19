@@ -1,0 +1,5 @@
+timing_repeat=100
+timing_warmup=10
+timing_total_ms=4461.99
+timing_mean_ms=44.6199
+timing_throughput_inf_per_s=22.4115
