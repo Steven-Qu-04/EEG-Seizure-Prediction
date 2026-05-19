@@ -1,11 +1,21 @@
 # Dataset and large local artifacts
 data/
+deploy_executorch/
 
 # Python caches
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
 
 # Local processing outputs
+outputs/
 outputs/nas_cnn_runs/
 outputs/nas_cnn_8bit_runs/
 outputs/nas_cnn_bin_runs/
@@ -44,3 +54,22 @@ deploy_executorch/dist/benchmark_runtime/*
 !deploy_executorch/dist/benchmark_runtime/raw_logs/
 deploy_executorch/dist/benchmark_runtime/raw_logs/*
 !deploy_executorch/dist/benchmark_runtime/raw_logs/*.txt
+# Local credentials
+kaggle.json
+token.txt
+
+# Local generated slices
+siena_slices/
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Build helper outputs
+build/
+dist/
+compile_commands.json
