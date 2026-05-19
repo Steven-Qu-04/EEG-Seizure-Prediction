@@ -29,6 +29,17 @@ def _ensure_same_length(*groups: Iterable[object]) -> None:
         raise ValueError(f"Expected matching lengths, got {sorted(lengths)}")
 
 
+def _same_pad(kernel_size: tuple[int, int]) -> tuple[int, int, int, int]:
+    kh, kw = kernel_size
+    pad_h = kh - 1
+    pad_w = kw - 1
+    pad_top = pad_h // 2
+    pad_bottom = pad_h - pad_top
+    pad_left = pad_w // 2
+    pad_right = pad_w - pad_left
+    return (pad_left, pad_right, pad_top, pad_bottom)
+
+
 class FixedSamePadConv2d(nn.Module):
     """Convolution with explicit static SAME-style padding."""
 
@@ -141,29 +152,18 @@ class EEGCNNDeploy(nn.Module):
 
         blocks: list[nn.Module] = []
         in_ch = 1
-        temporal_pads = {
-            4: (1, 2, 0, 0),
-            8: (3, 4, 0, 0),
-            16: (7, 8, 0, 0),
-        }
-        spatial_pads = {
-            8: (0, 0, 3, 4),
-            16: (0, 0, 7, 8),
-        }
 
         for out_ch, kernel_w, pool_w in zip(
             temporal_out_channels,
             temporal_kernel_widths,
             temporal_pool_widths,
         ):
-            if kernel_w not in temporal_pads:
-                raise ValueError(f"Unsupported temporal kernel width for v1 deployment: {kernel_w}")
             blocks.append(
                 DeployConvBlock(
                     in_channels=in_ch,
                     out_channels=out_ch,
                     kernel_size=(1, kernel_w),
-                    pad=temporal_pads[kernel_w],
+                    pad=_same_pad((1, kernel_w)),
                     pool_size=(1, pool_w),
                     use_batch_norm=use_batch_norm,
                     activation=activation,
@@ -178,14 +178,12 @@ class EEGCNNDeploy(nn.Module):
             spatial_kernel_heights,
             spatial_pool_heights,
         ):
-            if kernel_h not in spatial_pads:
-                raise ValueError(f"Unsupported spatial kernel height for v1 deployment: {kernel_h}")
             blocks.append(
                 DeployConvBlock(
                     in_channels=in_ch,
                     out_channels=out_ch,
                     kernel_size=(kernel_h, 1),
-                    pad=spatial_pads[kernel_h],
+                    pad=_same_pad((kernel_h, 1)),
                     pool_size=(pool_h, 1),
                     use_batch_norm=use_batch_norm,
                     activation=activation,

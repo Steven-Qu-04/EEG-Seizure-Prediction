@@ -1,0 +1,78 @@
+{
+  "metadata": {
+    "exe": "E:\\BaiduSyncdisk\\nuro_work\\deploy_executorch\\build_et10b\\infer.exe",
+    "input": "E:\\BaiduSyncdisk\\nuro_work\\deploy_executorch\\dist\\golden_input.bin",
+    "samples": 5,
+    "repeat": 100,
+    "warmup": 10,
+    "models": {
+      "orig_fp32": "E:\\BaiduSyncdisk\\nuro_work\\deploy_executorch\\dist\\model_orig_fp32.pte",
+      "curr_fp32": "E:\\BaiduSyncdisk\\nuro_work\\deploy_executorch\\dist\\model_fp32.pte",
+      "curr_int8": "E:\\BaiduSyncdisk\\nuro_work\\deploy_executorch\\dist\\model_int8.pte"
+    }
+  },
+  "summary": [
+    {
+      "model": "orig_fp32",
+      "n": 5,
+      "mean_latency_ms": 47.87546,
+      "std_latency_ms": 1.7535273616342573,
+      "ci95_low_ms": 45.698168205193504,
+      "ci95_high_ms": 50.05275179480649,
+      "mean_throughput_inf_per_s": 20.88752776474628
+    },
+    {
+      "model": "curr_fp32",
+      "n": 5,
+      "mean_latency_ms": 49.59442,
+      "std_latency_ms": 3.879742288735168,
+      "ci95_low_ms": 44.77708367776886,
+      "ci95_high_ms": 54.41175632223114,
+      "mean_throughput_inf_per_s": 20.163558722936976
+    },
+    {
+      "model": "curr_int8",
+      "n": 5,
+      "mean_latency_ms": 44.12016,
+      "std_latency_ms": 0.6537712619869428,
+      "ci95_low_ms": 43.308395760930566,
+      "ci95_high_ms": 44.93192423906943,
+      "mean_throughput_inf_per_s": 22.665375646869823
+    }
+  ],
+  "pairwise_tests": [
+    {
+      "left_model": "curr_fp32",
+      "right_model": "curr_int8",
+      "mean_diff_ms": 5.474259999999999,
+      "t_statistic": 2.916470411835022,
+      "p_value": 0.04339631574965341,
+      "faster_model": "curr_int8",
+      "slower_model": "curr_fp32",
+      "speedup_percent": 11.0380562974625,
+      "p_value_holm": 0.08679263149930681
+    },
+    {
+      "left_model": "curr_fp32",
+      "right_model": "orig_fp32",
+      "mean_diff_ms": 1.7189599999999998,
+      "t_statistic": 1.1451649597513875,
+      "p_value": 0.31600188445710986,
+      "faster_model": "orig_fp32",
+      "slower_model": "curr_fp32",
+      "speedup_percent": 3.4660350902379795,
+      "p_value_holm": 0.31600188445710986
+    },
+    {
+      "left_model": "curr_int8",
+      "right_model": "orig_fp32",
+      "mean_diff_ms": -3.7552999999999996,
+      "t_statistic": -4.10725442806844,
+      "p_value": 0.014765221566690788,
+      "faster_model": "curr_int8",
+      "slower_model": "orig_fp32",
+      "speedup_percent": 7.843893301495168,
+      "p_value_holm": 0.04429566470007237
+    }
+  ]
+}

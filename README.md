@@ -146,4 +146,148 @@ where the baseline is an exponential moving average of mean round reward with de
 
 At the end of the NAS loop, `train.py` retains the top two architectures ranked by validation selection score, saves their decoded JSON architecture files and weights, and evaluates them on the held-out test split. In that sense, the overall training strategy is two-stage: first tune the CNN architecture inside a fixed training protocol using the RNN controller, then report final generalization only for the best validation-ranked CNN candidates.
 
+### 2.3 Quantization strategy
+
+Besides the floating-point CNN described above, the `scripts/` directory also contains two low-precision training branches: an 8-bit quantization-aware CNN in `scripts/CNN_8bit.py` with training entrypoint `scripts/train_8bit.py`, and a binary CNN in `scripts/CNN_bin.py` with training entrypoint `scripts/train_bin.py`. Both branches reuse the same overall NAS-and-training workflow from `train_common.py`, which means the search protocol, split logic, and model-selection strategy remain aligned with the FP32 baseline, while only the numerical representation inside the network is changed.
+
+The 8-bit branch follows a quantization-aware training (QAT) design. Its core quantizer is `quantize_ste(x, bits=8)`, which clips values to a signed fixed-point range and rounds them onto an 8-bit grid during the forward pass, while using a straight-through estimator so that gradients still flow through the clipped floating-point tensor during backpropagation. In practical terms, the trainable master weights remain floating-point parameters, but each forward pass uses a quantized view of those parameters. The same mechanism is also applied to activations through `QuantAct`, so the network is optimized under simulated low-precision conditions rather than being quantized only after training is finished.
+
+Architecturally, the 8-bit CNN preserves the same temporal-stack plus spatial-stack design as the FP32 model, but inserts quantization explicitly at several points. The input is quantized once at the beginning of the forward pass, each convolution block uses quantized convolution weights, and each block applies activation quantization after the nonlinear stage. Batch normalization is retained in FP32, and the final classifier is implemented as a quantized linear layer. The training script exposes the quantization bit-width through `--bits` with a default of `8`, and the exported 8-bit artifact stores integer weights together with FP32 bias and batch-normalization statistics. This design reflects a common QAT compromise: arithmetic-critical weights and activations are pushed toward low precision, while some numerically sensitive parameters are preserved in floating point for stability.
+
+The binary branch pushes this idea further by replacing most internal arithmetic with binarized values. Its `binarize_ste(x)` function maps values to `{-1, +1}` in the forward pass while still allowing clipped gradients to pass during training. However, the entire network is not fully binary. The first convolution block is intentionally kept in FP32 for both inputs and weights, and it still uses the NAS-selected activation function. After that first block, later convolution blocks use binary inputs, binary weights, and a dedicated `BinaryAct` activation. The final classifier is again left as an FP32 linear head, while batch normalization remains in FP32 throughout the network. This mixed-precision layout is consistent with practical binary-network design, where the first and last stages are often kept in higher precision to reduce the accuracy collapse that would occur in a fully binary pipeline.
+
+From a modeling perspective, the repository therefore uses quantization not as a single post-processing step, but as an additional family of trainable model variants. The 8-bit branch targets a compromise between compression and accuracy, while the binary branch explores a more aggressive low-power design point with stronger arithmetic simplification. In both cases, the low-precision behavior is already present during training, so the learned parameters are adapted to the numerical constraints of their intended inference regime rather than being naively compressed only after the optimization process has finished.
+
 Finally, a practical limitation observed after training on the SIENA dataset is that the dataset is relatively small, which makes it difficult for the CNN to learn sufficiently stable and discriminative seizure-related features. For this reason, an additional Kaggle EEG dataset was introduced to expand the training data volume and improve feature learning diversity. The extended training experiments with the Kaggle supplement are still in progress.
+
+## 3 Deployment
+
+The current non-PyTorch deployment path is implemented under `deploy_executorch/`. Instead of using TorchScript, ONNX, or libtorch, this repository adopts an ExecuTorch-based workflow: model training and architecture search are still performed in PyTorch, but the final inference artifact is exported as an ExecuTorch program (`.pte`) and executed through a standalone C++ runtime. In the current first-version scaffold, the deployment ABI is fixed to an input tensor of shape `[1, 31, 5120]` with `float32` elements and an output tensor of shape `[1, 2]`.
+
+### 3.1 Quantization strategy
+
+The repository contains both a training-time 8-bit path and a deployment-time 8-bit path, and these two should not be confused. The 8-bit training implementation in `scripts/CNN_8bit.py` follows a QAT-style idea: weights and activations are quantized during forward propagation with a straight-through estimator so that the network learns parameters that are more tolerant to low-precision inference. In this sense, the 8-bit training stage mainly produces a model that is suitable for later quantization-aware deployment, rather than directly producing the final standalone runtime artifact.
+
+During deployment export, the int8 runtime program is regenerated from the trained checkpoint using the ExecuTorch/XNNPACK quantization stack in `deploy_executorch/tools/export_to_pte.py`. More specifically, the export script first rebuilds the deployment model in floating point, then applies PT2E-style quantization with `XNNPACKQuantizer`, `prepare_pt2e`, and `convert_pt2e`, and finally lowers the quantized graph into an ExecuTorch program. As a result, the original checkpoint file is not overwritten, but the deployed int8 program uses a new quantized representation derived from the trained floating-point weights. Therefore, the training-time 8-bit model should be understood as preparing the network for quantization, while the actual deployed int8 program is generated again during the export stage.
+
+### 3.2 ExecuTorch compilation workflow
+
+The export workflow is centered around `deploy_executorch/tools/export_to_pte.py`. First, the script loads a trained checkpoint and its decoded architecture JSON from `outputs/nas_cnn_8bit_runs/...`. It then reconstructs a deployment-only model using `deploy_executorch/deploy_model.py`. This deployment model is not identical to the training-time `EEGCNN` definition: it rewrites dynamic SAME padding into explicit static padding and constrains the supported kernel/padding combinations to a fixed first-version deployment template. This change is introduced so that the exported graph becomes more predictable and easier to lower into a compact runtime program.
+
+After the deployment model is rebuilt, the export pipeline creates a dummy example input of shape `(1, 31, 5120)` and runs two parallel conversions. The first conversion exports an FP32 ExecuTorch program through `torch.export.export(...)` followed by ExecuTorch edge lowering with `to_edge_transform_and_lower(...)` and `XnnpackPartitioner()`. The second conversion applies PT2E quantization first, then exports and lowers the quantized model in the same way. The script writes both `model_fp32.pte` and `model_int8.pte`, and then copies the int8 version to `model.pte`, which becomes the default runtime artifact used by the standalone inference binary.
+
+Besides the `.pte` files, the export script also writes auxiliary reference artifacts: `golden.pt`, `model_fp32_ref.pt`, `golden_input.bin`, and `golden_output.bin`. These files are used later for numerical validation and for checking that the C++ runtime produces outputs consistent with the original eager PyTorch model.
+
+### 3.3 Standalone runtime
+
+The standalone runtime is implemented in `deploy_executorch/cpp/main.cpp` and built through `deploy_executorch/CMakeLists.txt`. The C++ binary does not depend on the PyTorch runtime. Instead, it links against ExecuTorch runtime components such as `executorch`, `extension_module_static`, `extension_tensor`, and `extension_data_loader`. When available, it also links `portable_ops_lib`, `executorch_backends`, and `xnnpack_backend`, which means the current deployment path relies on the ExecuTorch runtime ecosystem and the XNNPACK backend rather than on Python or libtorch.
+
+At inference time, the executable loads `model.pte`, reads a flat `float32` input buffer from disk, wraps it as an ExecuTorch tensor with shape `{1, 31, 5120}`, and invokes the exported `forward` method. The output tensor is then converted back to a host-side float buffer for printing or validation. In this sense, the actual non-PyTorch inference dependency is the compiled ExecuTorch runtime plus the generated `.pte` model file, not the original training framework.
+
+### 3.4 Validation workflow
+
+The deployment chain includes both Python-side and C++-side validation. In Python, `deploy_executorch/tools/validate_export.py` loads the exported `model.pte` through the ExecuTorch runtime bindings, executes it on the saved golden input, and compares the result against the eager PyTorch model output. The script reports whether the two outputs are `allclose`, whether their `argmax` decisions are the same, and what the maximum absolute error is.
+
+On the C++ side, `main.cpp` can optionally receive `golden_output.bin` as a third argument. If provided, the runtime output is compared against the saved golden output using the same tolerance-based check (`rtol=1e-3`, `atol=1e-4`). This two-level validation design is useful because it checks both the export correctness in Python and the final standalone runtime behavior after compilation.
+
+### 3.5 Current limitations
+
+The current deployment implementation is best understood as a first-version scaffold rather than a fully general deployment framework. It is currently limited to a fixed input ABI `[1, 31, 5120]`, a fixed output ABI `[1, 2]`, and a deployment model whose architecture must match the expected first-version template. Not every NAS-discovered architecture can therefore be exported directly without additional deployment-side support.
+
+Another important limitation is that only the final runtime inference step is free from PyTorch dependency. The export and validation stages still require a Python environment with PyTorch, ExecuTorch Python tooling, and PT2E quantization support from `torchao`. In other words, the repository already contains a working path for generating and executing a non-PyTorch inference artifact, but this path is currently specialized, fixed-shape, and not yet a universal compiler for all training outputs in the project.
+
+## 4 Assessment
+
+### 4.1 Storage consumption and device usability
+
+From a storage perspective, the current standalone non-PyTorch runtime is already much lighter than the original PyTorch-dependent execution path. In the present build, the compiled ExecuTorch inference binary `deploy_executorch/build_et10b/infer.exe` occupies about `4.54 MiB`, while the exported runtime models `model_fp32.pte` and `model_int8.pte` occupy about `0.026 MiB` and `0.023 MiB`, respectively. If both exported model variants are kept together with the standalone executable, the total footprint is about `4.59 MiB`. If only the default runtime pair `infer.exe + model.pte` is kept for inference, the practical runtime footprint is about `4.56 MiB`.
+
+For comparison, the original PyTorch-dependent version has a much smaller checkpoint file by itself (`best_1.pt` is only about `0.023 MiB`), but this number is misleading if considered alone, because the checkpoint cannot run independently. In practice, it still requires a full Python and PyTorch execution environment. On the current machine, the corresponding conda environment used for export and validation occupies about `5.79 GiB`, which is orders of magnitude larger than the standalone ExecuTorch runtime package. Therefore, the main storage advantage of the non-PyTorch version does not come from a dramatically smaller model tensor file, but from removing the heavy framework dependency stack at inference time.
+
+From a device-usability perspective, the current implementation should be regarded as a feasibility validation of framework-independent inference rather than a finished embedded closed-loop system. What has already been achieved is meaningful: the trained model can be converted into an ExecuTorch `.pte` program, the program can be executed through a standalone C++ runtime without depending on the PyTorch runtime, and its numerical behavior can be checked against the eager model through both Python-side and C++-side validation. This demonstrates that the project has moved beyond pure desktop training and reached the stage of independent inference artifact generation.
+
+However, this does not yet satisfy the full requirement of directly running a complete closed-loop neuromodulation pipeline on an embedded device. First, the current deployment target is still a fixed-shape desktop-style runtime scaffold rather than a finalized embedded package. The implementation has not yet demonstrated deployment to a concrete resource-constrained MCU, DSP, FPGA softcore, or edge SoC with board-specific profiling. Second, the current work mainly covers the model inference stage, but a true closed-loop system also requires real-time signal acquisition, online preprocessing, window buffering, scheduling, event triggering, and stimulation/control output integration. Third, system-level constraints such as strict RAM budget, flash budget, latency bound, energy consumption, thermal behavior, fault tolerance, and long-duration runtime stability have not yet been fully characterized in the repository.
+
+In other words, the project has already shown that a non-PyTorch inference path is technically achievable and that the model can be packaged into a comparatively compact standalone runtime artifact. What is still missing for a complete embedded closed-loop demonstration is the last-mile integration work: hardware-target-specific build and validation, end-to-end real-time dataflow support, and device-level proof that sensing, prediction, and actuation can operate together within embedded resource limits.
+
+### 4.2 Static computational complexity and compute-energy proxy
+
+Under static analysis, the currently deployed inference model is structurally very small in parameter count but still nontrivial in arithmetic workload. For the fixed input shape `[1, 31, 5120]`, the model contains `2,922` trainable parameters in total and requires about `133.6 million` multiply-accumulate operations (MACs) for one forward pass. If one MAC is counted as one multiplication plus one addition, this corresponds to about `267.2 million` basic arithmetic operations. When a rough allowance is added for batch normalization, ReLU, and average-pooling operations, the full forward-pass workload is on the order of `280 million` scalar operations. The dominant hotspot is the third temporal block, which alone accounts for about `60.8%` of all MACs, indicating that the temporal feature extraction stage is the main source of compute cost in the present architecture.
+
+The static counts used here follow standard convolutional accounting rules. For a convolution layer with input channels `C_in`, output channels `C_out`, kernel size `K_h x K_w`, and output feature map size `H_out x W_out`, the main quantities are
+
+`Params_conv = C_out * (C_in * K_h * K_w + bias)`
+
+`MACs_conv = H_out * W_out * C_out * (C_in * K_h * K_w)`
+
+`Ops_conv ~= 2 * MACs_conv`
+
+where `bias` is `1` if a learnable bias term is present and `0` otherwise. For the final linear classifier with `N_in` input features and `N_out` output features, the same logic becomes
+
+`Params_fc = N_out * (N_in + bias)`
+
+`MACs_fc = N_in * N_out`
+
+`Ops_fc ~= 2 * MACs_fc`
+
+The total model complexity reported in this section is obtained by summing these quantities over all temporal convolution blocks, spatial convolution blocks, and the final classifier. The additional estimate from `267.2 million` arithmetic operations to roughly `280 million` scalar operations comes from including the elementwise cost of batch normalization, nonlinear activation, and pooling as a secondary correction term rather than treating convolutions alone as the full computation.
+
+From the perspective of static storage and data movement, the same model also shows a clear precision-dependent difference between floating-point and quantized execution. The peak intermediate feature map contains `634,880` elements, which corresponds to about `2.42 MiB` if represented as FP32 and about `620 KiB` if represented as int8. Likewise, the theoretical storage of the trainable parameters alone is about `11.4 KiB` in FP32 and about `2.9 KiB` in int8 if all weights are represented at 8-bit precision. Therefore, even before any hardware-specific benchmarking is performed, quantization already provides a static advantage in both arithmetic bit-width and memory traffic volume.
+
+It is important to note that the FP32 and int8 exported deployment models share the same graph topology, so the total number of MACs is essentially unchanged between the two versions. The advantage of quantization does not come from reducing the number of convolution locations or layer executions, but from making each arithmetic operation and each memory access cheaper. Under a literature-style compute-energy proxy, if FP32 MACs and int8 MACs are assigned representative normalized per-operation energies, the int8 model yields a much lower arithmetic energy lower bound than the FP32 model. Using this type of static proxy, the current model gives a rough compute-only lower bound on the order of `614.6 uJ` per inference for FP32 arithmetic versus about `30.7 uJ` per inference for int8 arithmetic, which suggests an approximately `20x` advantage in pure arithmetic energy for the quantized version.
+
+The compute-energy proxy is estimated with a simple operation-count model:
+
+`E_proxy ~= N_MAC * e_MAC`
+
+where `N_MAC` is the total number of MACs and `e_MAC` is a representative per-MAC energy taken from literature-scale back-of-the-envelope estimates. Using Horowitz-style normalized values for arithmetic energy, one may approximate
+
+`e_MAC(FP32) ~= e_mult(FP32) + e_add(FP32) ~= 3.7 pJ + 0.9 pJ = 4.6 pJ`
+
+`e_MAC(INT8) ~= e_mult(INT8) + e_add(INT8) ~= 0.2 pJ + 0.03 pJ = 0.23 pJ`
+
+which leads to
+
+`E_proxy(FP32) ~= 133,611,536 * 4.6 pJ ~= 614.6 uJ`
+
+`E_proxy(INT8) ~= 133,611,536 * 0.23 pJ ~= 30.7 uJ`
+
+This proxy is intentionally simple: it captures the arithmetic advantage of lower precision, but it does not model backend-specific kernel fusion, cache locality, thread scheduling, or off-chip memory traffic. Its purpose is therefore not to replace real power measurement, but to provide a transparent first-order estimate of why the quantized model should be computationally cheaper than the non-quantized one even when their layer topology is identical.
+
+This comparison should be interpreted carefully. These numbers are not board-level power measurements and do not yet include runtime overheads such as kernel launch cost, thread scheduling, cache behavior, off-chip memory access, or I/O handling. Nevertheless, as a static assessment, they are still useful: they show that the quantized model already has a clear theoretical advantage over the non-quantized model in terms of compute-energy proxy, even when the network structure itself is unchanged. In other words, the current repository is already able to support a defensible static argument that quantization improves computational energy efficiency, while future hardware measurements can be used to determine how much of this theoretical advantage is realized on the actual target platform. If later hardware-side evaluation is needed, a more standardized energy-per-inference measurement protocol can follow embedded benchmarking practices such as MLPerf Tiny.
+
+References for this subsection:
+
+1. Mark Horowitz, "Computing's Energy Problem (and what we can do about it)," ISSCC 2014. https://gwern.net/doc/cs/hardware/2014-horowitz-2.pdf
+2. Benoit Jacob et al., "Quantization and Training of Neural Networks for Efficient Integer-Arithmetic-Only Inference," CVPR 2018. https://openaccess.thecvf.com/content_cvpr_2018/papers/Jacob_Quantization_and_Training_CVPR_2018_paper.pdf
+3. Colby Banbury et al., "MLPerf Tiny Benchmark," NeurIPS Datasets and Benchmarks 2021 / OpenReview version. https://openreview.net/pdf?id=8RxxwAut1BI
+
+### 4.3 Runtime benchmark on the current platform
+
+To complement the static analysis above, the repository now also includes a small runtime benchmark on the current desktop standalone deployment path. Three ExecuTorch artifacts were compared under the same C++ runtime and the same fixed input binary: `orig_fp32`, which is the original non-quantized baseline from `outputs/nas_cnn_runs` exported to `deploy_executorch/dist/model_orig_fp32.pte`; `curr_fp32`, which is the floating-point standalone export from the current 8-bit-training branch; and `curr_int8`, which is the corresponding int8 standalone export from the same branch. The benchmark evidence is stored in [deploy_executorch/dist/benchmark_runtime/benchmark_summary.json](</e:/BaiduSyncdisk/nuro_work/deploy_executorch/dist/benchmark_runtime/benchmark_summary.json>), [benchmark_samples.csv](</e:/BaiduSyncdisk/nuro_work/deploy_executorch/dist/benchmark_runtime/benchmark_samples.csv>), [benchmark_summary.csv](</e:/BaiduSyncdisk/nuro_work/deploy_executorch/dist/benchmark_runtime/benchmark_summary.csv>), [benchmark_pairwise_tests.csv](</e:/BaiduSyncdisk/nuro_work/deploy_executorch/dist/benchmark_runtime/benchmark_pairwise_tests.csv>), and the raw CLI logs in [deploy_executorch/dist/benchmark_runtime/raw_logs](</e:/BaiduSyncdisk/nuro_work/deploy_executorch/dist/benchmark_runtime/raw_logs>).
+
+The protocol was intentionally simple and fully local. All three models were executed on the same machine, through the same `infer.exe` standalone runtime, and with the same fixed `golden_input.bin` input. For each model, `5` independent samples were collected. Each sample launched a fresh process, ran `10` warmup inferences that were not timed, and then measured `100` forward passes. The primary metric was mean wall-clock latency per inference in milliseconds. Confidence intervals were computed as `95%` Student-`t` intervals over the five sample means, and pairwise significance tests used paired `t`-tests with Holm correction across the three model pairs.
+
+![Standalone runtime benchmark overview](deploy_executorch/dist/benchmark_runtime/benchmark_runtime_combined.png)
+
+| Model | Mean latency (ms/inf) | SD (ms) | 95% CI (ms) | Mean throughput (inf/s) |
+| ----- | ---------------------: | ------: | ----------- | ----------------------: |
+| `orig_fp32` | `47.88` | `1.75` | `[45.70, 50.05]` | `20.89` |
+| `curr_fp32` | `49.59` | `3.88` | `[44.78, 54.41]` | `20.16` |
+| `curr_int8` | `44.12` | `0.65` | `[43.31, 44.93]` | `22.67` |
+
+The runtime data show that `curr_int8` is the fastest of the three standalone artifacts on the current platform. Relative to the original non-quantized standalone baseline, the int8 deployment reduced mean latency by about `3.76 ms` per inference, corresponding to a speedup of about `7.84%`. Relative to the current floating-point export from the same 8-bit-training branch, the int8 deployment reduced mean latency by about `5.47 ms`, corresponding to a speedup of about `11.04%`. The original baseline was also slightly faster than the current floating-point export, with a mean advantage of about `1.72 ms` or `3.47%`.
+
+| Pair | Mean latency difference (ms) | Faster model | Speedup (%) | Raw `p` | Holm-corrected `p` |
+| ---- | ---------------------------: | ------------ | ----------: | ------: | -----------------: |
+| `curr_fp32` vs `curr_int8` | `5.47` | `curr_int8` | `11.04` | `0.0434` | `0.0868` |
+| `curr_fp32` vs `orig_fp32` | `1.72` | `orig_fp32` | `3.47` | `0.3160` | `0.3160` |
+| `curr_int8` vs `orig_fp32` | `-3.76` | `curr_int8` | `7.84` | `0.0148` | `0.0443` |
+
+Under this small-sample protocol, the strongest result is the comparison between `curr_int8` and `orig_fp32`: after Holm correction, the int8 standalone artifact still shows a statistically significant latency advantage on the current platform. The comparison between `curr_int8` and `curr_fp32` points in the same direction and has a favorable raw `p`-value, but with only `n=5` samples it does not remain significant after multiple-comparison correction. Therefore, the runtime evidence is consistent with the static compute-energy analysis: quantization already produces a measurable practical speed advantage in the standalone deployment path, even though the present experiment is still a desktop runtime proxy rather than a board-level embedded power study.
+
+This section should still be read with the same caveats as the rest of the current deployment assessment. The measurements were collected on the present desktop-style standalone runtime, not on a target embedded board with direct power instrumentation. The benchmark therefore supports claims about runtime latency and statistical runtime advantage on the current platform, but not yet claims about final device energy per inference in a closed-loop embedded deployment.
+
+Finally, one practical limitation of the current assessment is that a fully usable end-task model has not yet been trained to the point where a realistic closed-loop application evaluation can be carried out directly. As a result, the present runtime benchmark can only compare the standalone behavior of each exported model independently, rather than evaluating a mature deployment pipeline under true task conditions. This means the current results should be interpreted as evidence about deployability and relative runtime behavior, not yet as proof of application-level readiness.
+
+More importantly, the most meaningful future evaluation is not the isolated runtime of a single model variant, but the behavior of a joint inference ecosystem in real use. In particular, one plausible deployment workflow is to let a very low-cost binary or near-binary model perform coarse early screening, and then let a higher-precision 32-bit or 8-bit model perform the later refined decision. Under such a cascaded setup, the critical quantities to measure are the actual end-to-end runtime power consumption, energy per decision, latency budget, false-alarm rate, missed-event rate, and the overall sensitivity-specificity trade-off of the combined system. Therefore, although the current repository already supports independent standalone benchmarking of several model forms, the more important next step is system-level evaluation of this cooperative multi-stage workflow under realistic operating conditions.

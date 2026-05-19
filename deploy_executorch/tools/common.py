@@ -13,29 +13,41 @@ if str(REPO_ROOT) not in sys.path:
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-DEFAULT_CHECKPOINT = (
+DEFAULT_CURRENT_CHECKPOINT = (
     REPO_ROOT / "outputs" / "nas_cnn_8bit_runs" / "20260516_190459_win10s_v1" / "best_1.pt"
 )
-DEFAULT_ARCH_PATH = (
+DEFAULT_CURRENT_ARCH_PATH = (
     REPO_ROOT / "outputs" / "nas_cnn_8bit_runs" / "20260516_190459_win10s_v1" / "best_1_arch.json"
 )
+DEFAULT_ORIG_CHECKPOINT = (
+    REPO_ROOT / "outputs" / "nas_cnn_runs" / "20260505_123644_win10s_v1" / "best_1.pt"
+)
+DEFAULT_ORIG_ARCH_PATH = (
+    REPO_ROOT / "outputs" / "nas_cnn_runs" / "20260505_123644_win10s_v1" / "best_1_arch.json"
+)
+DEFAULT_CHECKPOINT = DEFAULT_CURRENT_CHECKPOINT
+DEFAULT_ARCH_PATH = DEFAULT_CURRENT_ARCH_PATH
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "deploy_executorch" / "dist"
 DEFAULT_EXAMPLE_SHAPE = (1, 31, 5120)
-DEFAULT_ARCH = {
+FIXED_DEPLOYMENT_FIELDS = {
     "input_channels": 31,
     "num_classes": 2,
-    "temporal_out_channels": [4, 8, 8],
-    "temporal_kernel_widths": [4, 8, 16],
-    "temporal_pool_widths": [2, 1, 2],
-    "spatial_out_channels": [8, 8],
-    "spatial_kernel_heights": [8, 16],
-    "spatial_pool_heights": [4, 1],
-    "use_batch_norm": True,
-    "activation": "relu",
-    "pool_type": "avg",
-    "conv_bias": False,
     "return_probabilities": False,
 }
+REQUIRED_ARCH_KEYS = (
+    "input_channels",
+    "num_classes",
+    "temporal_out_channels",
+    "temporal_kernel_widths",
+    "temporal_pool_widths",
+    "spatial_out_channels",
+    "spatial_kernel_heights",
+    "spatial_pool_heights",
+    "use_batch_norm",
+    "activation",
+    "pool_type",
+    "conv_bias",
+)
 
 
 def require_torch():
@@ -59,7 +71,12 @@ def require_numpy():
 
 def read_arch_config(arch_path: Path) -> dict[str, Any]:
     arch = json.loads(arch_path.read_text(encoding="utf-8"))
-    for key, expected_value in DEFAULT_ARCH.items():
+    missing_keys = [key for key in REQUIRED_ARCH_KEYS if key not in arch]
+    if missing_keys:
+        raise ValueError(f"Architecture file is missing required keys: {missing_keys}")
+
+    arch.setdefault("return_probabilities", False)
+    for key, expected_value in FIXED_DEPLOYMENT_FIELDS.items():
         actual_value = arch.get(key)
         if actual_value != expected_value:
             raise ValueError(

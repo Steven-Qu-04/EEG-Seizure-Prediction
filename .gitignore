@@ -30,3 +30,17 @@ deploy_executorch/wheel_probe/
 deploy_executorch/tools/bin/
 deploy_executorch/dist/*
 !deploy_executorch/dist/.gitkeep
+!deploy_executorch/dist/model_orig_fp32.pte
+!deploy_executorch/dist/model_orig_fp32_ref.pt
+!deploy_executorch/dist/benchmark_runtime/
+deploy_executorch/dist/benchmark_runtime/*
+!deploy_executorch/dist/benchmark_runtime/benchmark_samples.csv
+!deploy_executorch/dist/benchmark_runtime/benchmark_summary.csv
+!deploy_executorch/dist/benchmark_runtime/benchmark_pairwise_tests.csv
+!deploy_executorch/dist/benchmark_runtime/benchmark_summary.json
+!deploy_executorch/dist/benchmark_runtime/benchmark_runtime_combined.png
+!deploy_executorch/dist/benchmark_runtime/benchmark_runtime_samples.png
+!deploy_executorch/dist/benchmark_runtime/benchmark_runtime_ci.png
+!deploy_executorch/dist/benchmark_runtime/raw_logs/
+deploy_executorch/dist/benchmark_runtime/raw_logs/*
+!deploy_executorch/dist/benchmark_runtime/raw_logs/*.txt
