@@ -49,8 +49,9 @@ ARCH_PARAM_NAMES = [
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="RNN-NAS + CNN training pipeline for SIENA slices.")
     p.add_argument("--data-root", default="data/processed/siena_slices")
+    p.add_argument("--dataset-layout", default="siena", choices=["siena", "kaggle"])
     p.add_argument("--window", default="win10s", choices=["win10s", "win20s", "win30s"])
-    p.add_argument("--version", default="v1", choices=["v1", "v2"])
+    p.add_argument("--version", default="v1", choices=["v1", "v2", "v3"])
     p.add_argument("--output-root", default="/hy-tmp/result")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--batch-size", type=int, default=64)
@@ -58,13 +59,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--epochs", type=int, default=8)
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--test-ratio", type=float, default=0.2)
+    p.add_argument("--val-ratio", type=float, default=0.2)
+    p.add_argument("--train-sampler", default="balanced-over", choices=["none", "balanced-over", "balanced-under"])
     p.add_argument("--nas-rounds", type=int, default=15)
     p.add_argument("--nas-samples", type=int, default=8)
     p.add_argument("--controller-lr", type=float, default=1e-3)
     p.add_argument("--controller-grad-clip", type=float, default=5.0)
     p.add_argument("--baseline-decay", type=float, default=0.9)
     p.add_argument("--fixed-arch", action="store_true", help="Train one default CNN directly without RNN-NAS search.")
-    p.add_argument("--class-weight", default="balanced", choices=["balanced", "auto", "none"])
+    p.add_argument("--fixed-arch-json", default=None, help="JSON architecture file used with --fixed-arch.")
+    p.add_argument("--class-weight", default="none", choices=["balanced", "auto", "none"])
     p.add_argument("--far-penalty", type=float, default=1e-3)
     p.add_argument(
         "--reward",
@@ -124,7 +128,7 @@ def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray, window_sec: int) -> 
 
 def build_criterion(train_ds, device, class_weight: str):
     if class_weight == "none":
-        return nn.CrossEntropyLoss(), None
+        return nn.CrossEntropyLoss(), {"neg": 1.0, "pos": 1.0}
 
     if class_weight == "balanced":
         weights = torch.tensor([1.0, 1.5], dtype=torch.float32, device=device)
@@ -160,10 +164,10 @@ def run_epoch(model, loader, criterion, optimizer, device, desc: str = "train") 
 
 
 @torch.no_grad()
-def eval_epoch(model, loader, criterion, device, window_sec: int) -> Dict[str, float]:
+def eval_epoch(model, loader, criterion, device, window_sec: int, return_outputs: bool = False) -> Dict[str, float]:
     model.eval()
     losses = []
-    ys, ps = [], []
+    ys, ps, pos_probs = [], [], []
     pbar = tqdm(loader, desc="val", leave=False)
     for x, y in pbar:
         x, y = x.to(device), y.to(device)
@@ -173,17 +177,109 @@ def eval_epoch(model, loader, criterion, device, window_sec: int) -> Dict[str, f
         losses.append(loss_v)
         pbar.set_postfix(loss=f"{loss_v:.4f}")
         pred = torch.argmax(logits, dim=1)
+        prob = torch.softmax(logits, dim=1)[:, 1]
         ys.append(y.cpu().numpy())
         ps.append(pred.cpu().numpy())
+        pos_probs.append(prob.cpu().numpy())
     if ys:
         y_true = np.concatenate(ys)
         y_pred = np.concatenate(ps)
+        y_prob = np.concatenate(pos_probs)
     else:
         y_true = np.zeros((0,), dtype=np.int64)
         y_pred = np.zeros((0,), dtype=np.int64)
+        y_prob = np.zeros((0,), dtype=np.float32)
     m = compute_metrics(y_true, y_pred, window_sec=window_sec)
     m["loss"] = float(np.mean(losses)) if losses else 0.0
+    if return_outputs:
+        m["y_true"] = y_true
+        m["y_pred"] = y_pred
+        m["y_prob_pos"] = y_prob
     return m
+
+
+def binary_roc_curve(y_true: np.ndarray, y_score: np.ndarray):
+    y_true = np.asarray(y_true).astype(np.int64)
+    y_score = np.asarray(y_score).astype(np.float64)
+    pos = int((y_true == 1).sum())
+    neg = int((y_true == 0).sum())
+    if pos == 0 or neg == 0:
+        return np.array([0.0, 1.0]), np.array([0.0, 1.0]), np.array([np.inf, -np.inf]), float("nan")
+
+    order = np.argsort(-y_score, kind="mergesort")
+    y_true = y_true[order]
+    y_score = y_score[order]
+    distinct = np.where(np.diff(y_score))[0]
+    threshold_idxs = np.r_[distinct, y_true.size - 1]
+
+    tps = np.cumsum(y_true == 1)[threshold_idxs]
+    fps = np.cumsum(y_true == 0)[threshold_idxs]
+    tpr = np.r_[0.0, tps / pos]
+    fpr = np.r_[0.0, fps / neg]
+    thresholds = np.r_[np.inf, y_score[threshold_idxs]]
+    auc = float(np.trapz(tpr, fpr))
+    return fpr, tpr, thresholds, auc
+
+
+def strip_array_outputs(metrics: Dict[str, float]) -> Dict[str, float]:
+    return {k: v for k, v in metrics.items() if k not in {"y_true", "y_pred", "y_prob_pos"}}
+
+
+def save_probability_analysis(metrics: Dict[str, float], out_dir: Path, split_name: str) -> Dict[str, float]:
+    y_true = np.asarray(metrics["y_true"]).astype(np.int64)
+    y_pred = np.asarray(metrics["y_pred"]).astype(np.int64)
+    y_prob = np.asarray(metrics["y_prob_pos"]).astype(np.float64)
+    fpr, tpr, thresholds, auc = binary_roc_curve(y_true, y_prob)
+
+    csv_path = out_dir / f"{split_name}_probabilities.csv"
+    with csv_path.open("w", encoding="utf-8") as f:
+        f.write("index,y_true,y_pred,p_preictal\n")
+        for i, (yt, yp, prob) in enumerate(zip(y_true, y_pred, y_prob)):
+            f.write(f"{i},{int(yt)},{int(yp)},{float(prob):.8f}\n")
+
+    roc_csv_path = out_dir / f"{split_name}_roc_curve.csv"
+    with roc_csv_path.open("w", encoding="utf-8") as f:
+        f.write("threshold,fpr,tpr\n")
+        for thr, fp, tp in zip(thresholds, fpr, tpr):
+            thr_s = "inf" if np.isposinf(thr) else f"{float(thr):.8f}"
+            f.write(f"{thr_s},{float(fp):.8f},{float(tp):.8f}\n")
+
+    plt.figure(figsize=(7, 5))
+    neg_probs = y_prob[y_true == 0]
+    pos_probs = y_prob[y_true == 1]
+    bins = np.linspace(0.0, 1.0, 51)
+    plt.hist(neg_probs, bins=bins, alpha=0.65, density=True, label=f"interictal(0), n={len(neg_probs)}")
+    plt.hist(pos_probs, bins=bins, alpha=0.65, density=True, label=f"preictal(1), n={len(pos_probs)}")
+    plt.axvline(0.5, color="black", linestyle="--", linewidth=1, label="argmax threshold")
+    plt.xlabel("P(preictal)")
+    plt.ylabel("Density")
+    plt.title(f"{split_name} P(preictal) Distribution")
+    plt.legend()
+    plt.tight_layout()
+    prob_plot_path = out_dir / f"{split_name}_p_preictal_distribution.png"
+    plt.savefig(prob_plot_path, dpi=180)
+    plt.close()
+
+    plt.figure(figsize=(6, 6))
+    plt.plot(fpr, tpr, label=f"AUC={auc:.4f}" if np.isfinite(auc) else "AUC=N/A")
+    plt.plot([0, 1], [0, 1], linestyle="--", color="gray", linewidth=1)
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title(f"{split_name} ROC Curve")
+    plt.legend(loc="lower right")
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    roc_plot_path = out_dir / f"{split_name}_roc_curve.png"
+    plt.savefig(roc_plot_path, dpi=180)
+    plt.close()
+
+    return {
+        "auc_roc": auc,
+        "probabilities_csv": str(csv_path),
+        "roc_curve_csv": str(roc_csv_path),
+        "probability_plot": str(prob_plot_path),
+        "roc_plot": str(roc_plot_path),
+    }
 
 
 def preflight_forward(model, loader, device) -> Dict[str, str]:
@@ -312,6 +408,25 @@ def get_default_cnn_kwargs(input_channels: int, num_classes: int = 2) -> Dict:
     }
 
 
+def load_fixed_arch_kwargs(path: str, input_channels: int, num_classes: int = 2) -> Dict:
+    kwargs = json.loads(Path(path).read_text(encoding="utf-8"))
+    tuple_keys = [
+        "temporal_out_channels",
+        "temporal_kernel_widths",
+        "temporal_pool_widths",
+        "spatial_out_channels",
+        "spatial_kernel_heights",
+        "spatial_pool_heights",
+    ]
+    for key in tuple_keys:
+        if key in kwargs:
+            kwargs[key] = tuple(kwargs[key])
+    kwargs["input_channels"] = int(input_channels)
+    kwargs["num_classes"] = int(num_classes)
+    kwargs["return_probabilities"] = False
+    return kwargs
+
+
 def _ok_trials(nas_trials: List[Dict]) -> List[Dict]:
     return [t for t in nas_trials if t.get("status") == "ok" and "val_metrics_for_selection" in t]
 
@@ -403,6 +518,8 @@ def save_nas_performance_progress_plot(nas_trials: List[Dict], out_dir: Path) ->
 
 def main() -> None:
     args = parse_args()
+    if args.fixed_arch_json and not args.fixed_arch:
+        raise ValueError("--fixed-arch-json can only be used with --fixed-arch")
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -417,6 +534,9 @@ def main() -> None:
         num_workers=args.num_workers,
         seed=args.seed,
         test_ratio=args.test_ratio,
+        train_sampler=args.train_sampler,
+        layout=args.dataset_layout,
+        val_ratio=args.val_ratio,
     )
     train_loader = d["train_loader"]
     val_loader = d["val_loader"]     # permanent val for NAS selection
@@ -440,7 +560,11 @@ def main() -> None:
 
     if args.fixed_arch:
         criterion, class_weights = build_criterion(d["train_ds"], device=device, class_weight=args.class_weight)
-        kwargs = get_default_cnn_kwargs(input_channels=d["train_ds"].num_channels(), num_classes=2)
+        fixed_arch_json_path = str(Path(args.fixed_arch_json).resolve()) if args.fixed_arch_json else None
+        if args.fixed_arch_json:
+            kwargs = load_fixed_arch_kwargs(args.fixed_arch_json, input_channels=d["train_ds"].num_channels(), num_classes=2)
+        else:
+            kwargs = get_default_cnn_kwargs(input_channels=d["train_ds"].num_channels(), num_classes=2)
         valid, reason = validate_arch_kwargs(kwargs)
         if not valid:
             raise RuntimeError(f"Invalid fixed CNN architecture: {reason}")
@@ -481,8 +605,12 @@ def main() -> None:
 
         if best_epoch_state is not None:
             model.load_state_dict(best_epoch_state)
-        val_m = eval_epoch(model, val_loader, criterion, device, window_sec=window_sec)
-        test_m = eval_epoch(model, test_loader, criterion, device, window_sec=window_sec)
+        val_m_full = eval_epoch(model, val_loader, criterion, device, window_sec=window_sec, return_outputs=True)
+        test_m_full = eval_epoch(model, test_loader, criterion, device, window_sec=window_sec, return_outputs=True)
+        val_analysis = save_probability_analysis(val_m_full, out_dir=out_dir, split_name="val")
+        test_analysis = save_probability_analysis(test_m_full, out_dir=out_dir, split_name="test")
+        val_m = strip_array_outputs(val_m_full)
+        test_m = strip_array_outputs(test_m_full)
         t_end = datetime.now()
 
         torch.save(model.state_dict(), out_dir / "fixed_cnn.pt")
@@ -501,7 +629,12 @@ def main() -> None:
                     "best_epoch_val_metrics": best_epoch_metrics,
                     "val_metrics": val_m,
                     "test_metrics": test_m,
+                    "val_probability_analysis": val_analysis,
+                    "test_probability_analysis": test_analysis,
                     "class_weights": class_weights,
+                    "train_sampler": d["train_sampler_info"],
+                    "fixed_arch_json": fixed_arch_json_path,
+                    "fixed_arch_kwargs": kwargs,
                 },
                 indent=2,
             ),
@@ -519,29 +652,36 @@ def main() -> None:
         report_lines.append(f"- torch: {torch.__version__}")
         report_lines.append(f"- cli_args: {vars(args)}")
         report_lines.append(f"- class_weights: {class_weights}")
+        report_lines.append(f"- train_sampler: {d['train_sampler_info']}")
+        report_lines.append(f"- fixed_arch_json: {fixed_arch_json_path}")
         report_lines.append(f"- selection_score: {reward_description(args.reward, args.far_penalty)}")
         report_lines.append(f"- best_epoch: {best_epoch}")
         report_lines.append(f"- start_time: {t_start.isoformat(timespec='seconds')}")
         report_lines.append(f"- end_time: {t_end.isoformat(timespec='seconds')}")
         report_lines.append("")
         report_lines.append("Dataset Selection")
+        report_lines.append(f"- dataset_layout: {args.dataset_layout}")
         report_lines.append(f"- window: {args.window}")
         report_lines.append(f"- version: {args.version}")
         report_lines.append(f"- split_manifest: {manifest_path}")
         report_lines.append("")
         report_lines.append("Figures")
         report_lines.append(f"- loss_curve: {out_dir / 'loss_curve.png'}")
+        report_lines.append(f"- val_probability_plot: {val_analysis['probability_plot']}")
+        report_lines.append(f"- val_roc_curve: {val_analysis['roc_plot']}")
+        report_lines.append(f"- test_probability_plot: {test_analysis['probability_plot']}")
+        report_lines.append(f"- test_roc_curve: {test_analysis['roc_plot']}")
         report_lines.append("")
         report_lines.append("Final Validation Metrics")
         report_lines.append(
             f"- sensitivity={val_m['sensitivity']:.6f}, far={val_m['far']:.6f}, f1={val_m['f1']:.6f}, "
-            f"macro_f1={val_m['macro_f1']:.6f}, acc={val_m['accuracy']:.6f}"
+            f"macro_f1={val_m['macro_f1']:.6f}, acc={val_m['accuracy']:.6f}, auc_roc={val_analysis['auc_roc']:.6f}"
         )
         report_lines.append("")
         report_lines.append("Final Test Metrics (Held-out Test Split)")
         report_lines.append(
             f"- sensitivity={test_m['sensitivity']:.6f}, far={test_m['far']:.6f}, f1={test_m['f1']:.6f}, "
-            f"macro_f1={test_m['macro_f1']:.6f}, acc={test_m['accuracy']:.6f}"
+            f"macro_f1={test_m['macro_f1']:.6f}, acc={test_m['accuracy']:.6f}, auc_roc={test_analysis['auc_roc']:.6f}"
         )
         (out_dir / "report.txt").write_text("\n".join(report_lines), encoding="utf-8")
         print(f"Done: {out_dir}")
@@ -766,6 +906,7 @@ def main() -> None:
     report_lines.append(f"- torch: {torch.__version__}")
     report_lines.append(f"- cli_args: {vars(args)}")
     report_lines.append(f"- class_weights: {class_weights}")
+    report_lines.append(f"- train_sampler: {d['train_sampler_info']}")
     report_lines.append(f"- selection_score: {reward_description(args.reward, args.far_penalty)}")
     report_lines.append(f"- start_time: {t_start.isoformat(timespec='seconds')}")
     report_lines.append(f"- end_time: {t_end.isoformat(timespec='seconds')}")
@@ -780,6 +921,7 @@ def main() -> None:
     report_lines.append("- invalid_reward: min(valid_rewards) - 0.1, or -1.0 if all trials fail")
     report_lines.append("")
     report_lines.append("Dataset Selection")
+    report_lines.append(f"- dataset_layout: {args.dataset_layout}")
     report_lines.append(f"- window: {args.window}")
     report_lines.append(f"- version: {args.version}")
     report_lines.append(f"- split_manifest: {manifest_path}")

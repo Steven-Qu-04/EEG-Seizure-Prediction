@@ -25,6 +25,7 @@ def discover_record_items(
     root: Path,
     window: str,
     version: str,
+    layout: str = "siena",
     include_subjects: Optional[Sequence[str]] = None,
     exclude_subjects: Optional[Sequence[str]] = None,
     include_records: Optional[Sequence[str]] = None,
@@ -35,7 +36,14 @@ def discover_record_items(
     include_records = set(include_records or [])
     exclude_records = set(exclude_records or [])
 
-    base = root / "SPH5m_PIL30m" / window
+    layout_roots = {
+        "siena": "SPH5m_PIL30m",
+        "kaggle": "KaggleSegmentLabels",
+    }
+    if layout not in layout_roots:
+        raise ValueError(f"Unknown dataset layout: {layout}")
+
+    base = root / layout_roots[layout] / window
     if not base.exists():
         raise FileNotFoundError(f"Window path not found: {base}")
 

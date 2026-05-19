@@ -6,6 +6,7 @@ __pycache__/
 *.pyc
 
 # Local processing outputs
+outputs/
 outputs/nas_cnn_runs/
 outputs/nas_cnn_8bit_runs/
 outputs/nas_cnn_bin_runs/
@@ -22,3 +23,10 @@ outputs/single_edf_eda/siena/_*.log
 
 # Reference text extracts
 references/*.txt
+
+# Local credentials
+kaggle.json
+token.txt
+
+# Local generated slices
+siena_slices/
